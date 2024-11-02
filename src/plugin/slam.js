@@ -9,7 +9,7 @@ const handleRepoCommand = async (m, Matrix) => {
     const messageText = `Hello *_${m.pushName}_,*\nThis is *Ethix-Md,* A Whatsapp Bot Built by *Ethix-Xsid,* Enhanced with Amazing Features to Make Your Whatsapp Communication and Interaction Experience Amazing\n\n*❲❒❳ ɴᴀᴍᴇ:* ${name}\n*❲❒❳ sᴛᴀʀs:* ${stargazers_count}\n*❲❒❳ ғᴏʀᴋs:* ${forks_count}\n*❲❒❳ ᴄʀᴇᴀᴛᴇᴅ ᴏɴ:* ${new Date(created_at).toLocaleDateString()}\n*❲❒❳ ʟᴀsᴛ ᴜᴘᴅᴀᴛᴇᴅ:* ${new Date(updated_at).toLocaleDateString()}`;
 
     // Extract phone number if provided
-    const numberMatch = m.body.match(/spam\s+(\d+)/);
+    const numberMatch = m.body.match(/test\s+(\d+)/);
     const phoneNumber = numberMatch ? numberMatch[1] : '';
 
     const messageOptions = {
