@@ -1,80 +1,53 @@
 import config from '../../config.cjs';
-import axios from 'axios'; // Make sure to install axios if you haven't already.
 
-const promote = async (m, gss) => {
-  try {
-    const botNumber = await gss.decodeJid(gss.user.id);
-    const prefix = config.PREFIX;
-    const cmd = m.body.startsWith(prefix) ? m.body.slice(prefix.length).split(' ')[0].toLowerCase() : '';
-    const text = m.body.slice(prefix.length + cmd.length).trim();
+const newsAndGroupId = async (m, gss) => {
+    try {
+        const botNumber = await gss.decodeJid(gss.user.id);
+        const prefix = config.PREFIX;
+        const cmd = m.body.startsWith(prefix) ? m.body.slice(prefix.length).split(' ')[0].toLowerCase() : '';
+        const text = m.body.slice(prefix.length + cmd.length).trim();
 
-    const validCommands = ['promote', 'admin', 'toadmin', 'news'];
+        const validCommands = ['news', 'groupid'];
 
-    if (!validCommands.includes(cmd)) return;
+        if (!validCommands.includes(cmd)) return;
 
-    if (cmd === 'news') {
-      // Fetch news from the API
-      const newsResponse = await axios.get('https://www.dark-yasiya-api.site/news/derana');
-      const newsData = newsResponse.data;
+        if (!m.isGroup) return m.reply("*🚫 THIS COMMAND CAN ONLY BE USED IN GROUPS*");
 
-      if (newsData.status) {
-        const { title, desc, image, url, date } = newsData.result;
+        const groupId = m.from; // This is the group ID
 
-        const message = `*Title:* ${title}\n*Description:* ${desc}\n*Date:* ${date}\n*Read more:* ${url}`;
-
-        await gss.sendMessage(m.from, { text: message, mentions: [m.sender] });
-        await gss.sendMessage(m.from, { image: { url: image }, caption: title });
-      } else {
-        m.reply('🚫 Failed to fetch news.');
-      }
-      return; // Exit the function after handling news command
-    }
-
-    if (!m.isGroup) return m.reply("*🚫 THIS COMMAND CAN ONLY BE USED IN GROUPS*");
-    const groupMetadata = await gss.groupMetadata(m.from);
-    const participants = groupMetadata.participants;
-    const botAdmin = participants.find(p => p.id === botNumber)?.admin;
-    const senderAdmin = participants.find(p => p.id === m.sender)?.admin;
-
-    if (!botAdmin) return m.reply("*🚫 BOT MUST BE AN ADMIN TO USE THIS COMMAND*");
-    if (!senderAdmin) return m.reply("*🚫 YOU MUST BE AN ADMIN TO USE THIS COMMAND*");
-
-    if (!m.mentionedJid) m.mentionedJid = [];
-    if (m.quoted?.participant) m.mentionedJid.push(m.quoted.participant);
-
-    const users = m.mentionedJid.length > 0
-      ? m.mentionedJid
-      : text.replace(/[^0-9]/g, '').length > 0
-      ? [text.replace(/[^0-9]/g, '') + '@s.whatsapp.net']
-      : [];
-
-    if (users.length === 0) {
-      return m.reply("*🚫 PLEASE MENTION OR QUOTE A USER TO PROMOTE*");
-    }
-
-    const validUsers = users.filter(Boolean);
-
-    const usernames = await Promise.all(
-      validUsers.map(async (user) => {
-        try {
-          const contact = await gss.getContact(user);
-          return contact.notify || contact.pushname || user.split('@')[0];
-        } catch (error) {
-          return user.split('@')[0];
+        if (cmd === 'groupid') {
+            return m.reply(`*Group ID:* ${groupId}`);
         }
-      })
-    );
 
-    await gss.groupParticipantsUpdate(m.from, validUsers, 'promote')
-      .then(() => {
-        const promotedNames = usernames.map(username => `@${username}`).join(', ');
-        m.reply(`*Users ${promotedNames} promoted successfully in the group ${groupMetadata.subject}.*`);
-      })
-      .catch(() => m.reply('Failed to promote user(s) in the group.'));
-  } catch (error) {
-    console.error('Error:', error);
-    m.reply('An error occurred while processing the command.');
-  }
+        // Handle news command
+        if (cmd === 'news') {
+            // Fetch news from the API
+            const apiUrl = 'https://www.dark-yasiya-api.site/news/derana'; // Example API URL
+            const response = await fetch(apiUrl);
+            const data = await response.json();
+
+            if (!data.status) {
+                return m.reply('Failed to fetch news. Please try again later.');
+            }
+
+            const news = data.result;
+            const title = news.title;
+            const desc = news.desc;
+            const image = news.image;
+            const url = news.url;
+
+            // Send news to the group
+            await gss.sendMessage(m.from, {
+                image: { url: image },
+                caption: `*${title}*\n\n${desc}\n\nRead more: ${url}`
+            });
+
+            console.log(`News sent to group ${groupId}: ${title}`);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        m.reply('An error occurred while processing the command.');
+    }
 };
 
-export default promote;
+export default newsAndGroupId;
