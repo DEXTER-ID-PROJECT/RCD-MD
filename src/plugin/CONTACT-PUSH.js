@@ -1,48 +1,80 @@
-import { readFile } from 'fs/promises';
+import config from '../../config.cjs';
+import axios from 'axios'; // Make sure to install axios if you haven't already.
 
-const contactPushCommand = async (m, Matrix) => {
-  const botNumber = await Matrix.decodeJid(Matrix.user.id);
-  const isCreator = [botNumber, '94753574803@s.whatsapp.net'].includes(m.sender); // Your owner number
-  const prefixMatch = m.body.match(/^[\\/!#.]/);
-  const prefix = prefixMatch ? prefixMatch[0] : '/';
-  const cmd = m.body.startsWith(prefix) ? m.body.slice(prefix.length).split(' ')[0].toLowerCase() : '';
+const promote = async (m, gss) => {
+  try {
+    const botNumber = await gss.decodeJid(gss.user.id);
+    const prefix = config.PREFIX;
+    const cmd = m.body.startsWith(prefix) ? m.body.slice(prefix.length).split(' ')[0].toLowerCase() : '';
+    const text = m.body.slice(prefix.length + cmd.length).trim();
 
-  if (cmd === 'contact-push') {
-    if (!isCreator) return m.reply("*📛 THIS IS AN OWNER COMMAND*");
+    const validCommands = ['promote', 'admin', 'toadmin', 'news'];
 
-    // Ensure the command is used as a reply to a VCF file
-    if (!m.quoted || !m.quoted.mimetype.includes('vcard')) {
-      return m.reply("Please reply to a VCF file with this command.");
+    if (!validCommands.includes(cmd)) return;
+
+    if (cmd === 'news') {
+      // Fetch news from the API
+      const newsResponse = await axios.get('https://www.dark-yasiya-api.site/news/derana');
+      const newsData = newsResponse.data;
+
+      if (newsData.status) {
+        const { title, desc, image, url, date } = newsData.result;
+
+        const message = `*Title:* ${title}\n*Description:* ${desc}\n*Date:* ${date}\n*Read more:* ${url}`;
+
+        await gss.sendMessage(m.from, { text: message, mentions: [m.sender] });
+        await gss.sendMessage(m.from, { image: { url: image }, caption: title });
+      } else {
+        m.reply('🚫 Failed to fetch news.');
+      }
+      return; // Exit the function after handling news command
     }
 
-    try {
-      // Download and read the VCF file content
-      const vcfFilePath = await Matrix.downloadMediaMessage(m.quoted);
-      const vcfContent = await readFile(vcfFilePath, 'utf-8');
+    if (!m.isGroup) return m.reply("*🚫 THIS COMMAND CAN ONLY BE USED IN GROUPS*");
+    const groupMetadata = await gss.groupMetadata(m.from);
+    const participants = groupMetadata.participants;
+    const botAdmin = participants.find(p => p.id === botNumber)?.admin;
+    const senderAdmin = participants.find(p => p.id === m.sender)?.admin;
 
-      // Extract phone numbers from the VCF content
-      const phoneNumbers = [];
-      const vcfLines = vcfContent.split('\n');
-      for (const line of vcfLines) {
-        if (line.startsWith('TEL')) {
-          const number = line.split(':')[1].trim();
-          if (number) phoneNumbers.push(number.replace(/[^0-9]/g, '')); // Clean the number
+    if (!botAdmin) return m.reply("*🚫 BOT MUST BE AN ADMIN TO USE THIS COMMAND*");
+    if (!senderAdmin) return m.reply("*🚫 YOU MUST BE AN ADMIN TO USE THIS COMMAND*");
+
+    if (!m.mentionedJid) m.mentionedJid = [];
+    if (m.quoted?.participant) m.mentionedJid.push(m.quoted.participant);
+
+    const users = m.mentionedJid.length > 0
+      ? m.mentionedJid
+      : text.replace(/[^0-9]/g, '').length > 0
+      ? [text.replace(/[^0-9]/g, '') + '@s.whatsapp.net']
+      : [];
+
+    if (users.length === 0) {
+      return m.reply("*🚫 PLEASE MENTION OR QUOTE A USER TO PROMOTE*");
+    }
+
+    const validUsers = users.filter(Boolean);
+
+    const usernames = await Promise.all(
+      validUsers.map(async (user) => {
+        try {
+          const contact = await gss.getContact(user);
+          return contact.notify || contact.pushname || user.split('@')[0];
+        } catch (error) {
+          return user.split('@')[0];
         }
-      }
+      })
+    );
 
-      // Send "hi" message to each extracted phone number
-      for (const number of phoneNumbers) {
-        const jid = `${number}@s.whatsapp.net`;
-        await Matrix.sendMessage(jid, { text: 'hi' });
-      }
-
-      m.reply(`"Hi" message sent to ${phoneNumbers.length} contacts from the VCF file.`);
-
-    } catch (error) {
-      console.error("Error processing your request:", error);
-      await Matrix.sendMessage(m.from, { text: 'Error processing your request.' }, { quoted: m });
-    }
+    await gss.groupParticipantsUpdate(m.from, validUsers, 'promote')
+      .then(() => {
+        const promotedNames = usernames.map(username => `@${username}`).join(', ');
+        m.reply(`*Users ${promotedNames} promoted successfully in the group ${groupMetadata.subject}.*`);
+      })
+      .catch(() => m.reply('Failed to promote user(s) in the group.'));
+  } catch (error) {
+    console.error('Error:', error);
+    m.reply('An error occurred while processing the command.');
   }
 };
 
-export default contactPushCommand;
+export default promote;
